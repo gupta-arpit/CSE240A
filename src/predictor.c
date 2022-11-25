@@ -92,6 +92,7 @@ void init_tournament_predictor(struct TournamentPredictor *tournamentPredictor, 
   tournamentPredictor->ghistoryBits = ghistoryBits;
   tournamentPredictor->lhistoryBits = lhistoryBits;
   tournamentPredictor->pcIndexBits = pcIndexBits;
+  tournamentPredictor->ghistory = 0;
 
   // Initialize the local history table.
   uint32_t localHistoryTableSize = (1 << pcIndexBits); // 2^pcIndexBits
@@ -100,21 +101,21 @@ void init_tournament_predictor(struct TournamentPredictor *tournamentPredictor, 
   assert(tournamentPredictor->localHistoryTable != NULL);
 
   // Initialize the local prediction table.
-  uint8_t localPredictionSize = (1 << lhistoryBits); // 2^lhistoryBits
+  uint32_t localPredictionSize = (1 << lhistoryBits); // 2^lhistoryBits
   tournamentPredictor->localPrediction = (uint8_t *) malloc(localPredictionSize * sizeof(uint8_t));
   for (int i = 0; i < localPredictionSize; i++) { tournamentPredictor->localPrediction[i] = 1; }
   assert(tournamentPredictor->localPrediction != NULL);
 
   // Initialize the global prediction table.
-  uint8_t globalPredictionSize = (1 << ghistoryBits); // 2^ghistoryBits
+  uint32_t globalPredictionSize = (1 << ghistoryBits); // 2^ghistoryBits
   tournamentPredictor->globalPrediction = (uint8_t *) malloc(globalPredictionSize * sizeof(uint8_t));
   for (int i = 0; i < globalPredictionSize; i++) { tournamentPredictor->globalPrediction[i] = 1; }
   assert(tournamentPredictor->globalPrediction != NULL);
 
   // Initialize the choice prediction table.
-  uint8_t choicePredictionSize = (1 << ghistoryBits); // 2^ghistoryBits
+  uint32_t choicePredictionSize = (1 << ghistoryBits); // 2^ghistoryBits
   tournamentPredictor->choicePrediction = (uint8_t *) malloc(choicePredictionSize * sizeof(uint8_t));
-  for (int i = 0; i < choicePredictionSize; i++) { tournamentPredictor->choicePrediction[i] = 0; }
+  for (int i = 0; i < choicePredictionSize; i++) { tournamentPredictor->choicePrediction[i] = 1; }
   assert(tournamentPredictor->choicePrediction != NULL);
 }
 
@@ -141,11 +142,7 @@ uint8_t make_prediction_tournament_predictor_local_raw(struct TournamentPredicto
   // Get the local history at address `pc`.
   uint32_t pcMask = get_mask(tournamentPredictor->pcIndexBits);
   uint32_t localHistoryIndex = pc & pcMask; // pc % 2^pcIndexBits
-  // printf("localHistoryIndex: %d\n", localHistoryIndex);
-  // printf("localHistoryTable[0]: %d\n", tournamentPredictor->localHistoryTable[0]);
-  // printf("localHistoryTable[1]: %d\n", tournamentPredictor->localHistoryTable[1]);
   int localHistory = tournamentPredictor->localHistoryTable[localHistoryIndex];
-  // printf("localhistory value = %d\n", localHistory);
 
   // Get counter from local prediction.
   uint8_t localPredictionCounter = tournamentPredictor->localPrediction[localHistory];
@@ -205,14 +202,14 @@ uint8_t make_prediction_tournament_predictor(struct TournamentPredictor *tournam
   {
     case kTournamentPredictorGlobalChoice:
       prediction = make_prediction_tournament_predictor_global(tournamentPredictor);
-      if (verbose)
+      if (verbose != 0)
       {
         printf("Prediction using GLOBAL: %d\n", prediction);
       }
       break;
     case kTournamentPredictorLocalChoice:
       prediction = make_prediction_tournament_predictor_local(tournamentPredictor, pc);
-      if (verbose)
+      if (verbose != 0)
       {
         printf("Prediction using LOCAL: %d\n", prediction);
       }
@@ -225,17 +222,18 @@ uint8_t make_prediction_tournament_predictor(struct TournamentPredictor *tournam
 
 void train_tournament_predictor(struct TournamentPredictor *tournamentPredictor, uint32_t pc, uint8_t outcome) {
   // Update choice predictor.
-  uint8_t local_prediction_raw = make_prediction_tournament_predictor_local_raw(tournamentPredictor, pc);
-  uint8_t local_prediction = (local_prediction_raw >> 1) & 1;
-
-  uint8_t global_prediction_raw = make_prediction_tournament_predictor_global_raw(tournamentPredictor);
-  uint8_t global_prediction = (global_prediction_raw >> 1) & 1;
+  uint8_t local_prediction = make_prediction_tournament_predictor_local(tournamentPredictor, pc);
+  uint8_t global_prediction = make_prediction_tournament_predictor_global(tournamentPredictor);
 
   if (local_prediction != global_prediction)
   {
     int8_t increment = (local_prediction == outcome) ? 1 : -1;
     uint8_t* choicePrediction = &tournamentPredictor->choicePrediction[tournamentPredictor->ghistory];
     *choicePrediction = update_counter(*choicePrediction, increment);
+    if (verbose != 0)
+    {
+      printf("Choice predictor updated to: %d\n", *choicePrediction);
+    }
   }
 
   // Update local predictor.
@@ -247,31 +245,37 @@ void train_tournament_predictor(struct TournamentPredictor *tournamentPredictor,
   // Update local prediction.
   // Get counter from local prediction.
   uint8_t *localPredictionCounter = &tournamentPredictor->localPrediction[*localHistory];
+  if (verbose != 0)
+  {
+    printf("Local prediction counter [before]: %d\n", *localPredictionCounter);
+  }
   // Update counter.
   *localPredictionCounter = update_counter(*localPredictionCounter, outcome == TAKEN ? 1 : -1);
   // Update local history.
   *localHistory = ((*localHistory << 1) | outcome) % (1 << tournamentPredictor->lhistoryBits);
-
-  if (verbose)
-  {
-    printf("Updated local history: ");
-    print_all_the_bits_after_consecutive_zeros(tournamentPredictor->localHistoryTable[localHistoryIndex]);
-  }
 
   // Update global predictor.
   // Get the global history.
   uint32_t* globalHistory = &tournamentPredictor->ghistory;
   // Get counter from global prediction.
   uint8_t* globalPredictionCounter = &tournamentPredictor->globalPrediction[*globalHistory];
+  if (verbose != 0)
+  {
+    printf("Global prediction counter [before]: %d\n", *globalPredictionCounter);
+  }
   // Update counter.
   *globalPredictionCounter = update_counter(*globalPredictionCounter, outcome == TAKEN ? 1 : -1);
   // Update global history
   *globalHistory = ((*globalHistory << 1) | outcome) % (1 << tournamentPredictor->ghistoryBits);
 
-  if (verbose)
+  if (verbose != 0)
   {
-    printf("Updated global history: ");
-    print_all_the_bits_after_consecutive_zeros(tournamentPredictor->ghistory);
+    printf("Local prediction counter updated to: %d\n", *localPredictionCounter);
+    printf("Local history at pc = %d updated to: %d\n", pc, *localHistory);
+    printf("Global prediction counter updated to: %d\n", *globalPredictionCounter);
+    printf("Global history updated to: %d\n", *globalHistory);
+    // printf("Updated global history: ");
+    // print_all_the_bits_after_consecutive_zeros(tournamentPredictor->ghistory);
   }
 }
 //
