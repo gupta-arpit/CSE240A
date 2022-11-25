@@ -28,6 +28,9 @@ int pcIndexBits;  // Number of bits used for PC index
 int bpType;       // Branch Prediction Type
 int verbose;
 
+#define max(a,b) ((a) > (b) ? (a) : (b))
+#define min(a,b) ((a) < (b) ? (a) : (b))
+
 //------------------------------------//
 //      Predictor Data Structures     //
 //------------------------------------//
@@ -35,7 +38,7 @@ int verbose;
 // Utilities
 uint8_t update_counter(uint8_t counter, int8_t increment)
 {
-  return (counter + increment) & 0b11;
+  return min(max(counter + increment, 0), 3);
 }
 
 void print_all_the_bits_after_consecutive_zeros(uint32_t num)
@@ -202,9 +205,17 @@ uint8_t make_prediction_tournament_predictor(struct TournamentPredictor *tournam
   {
     case kTournamentPredictorGlobalChoice:
       prediction = make_prediction_tournament_predictor_global(tournamentPredictor);
+      if (verbose)
+      {
+        printf("Prediction using GLOBAL: %d\n", prediction);
+      }
       break;
     case kTournamentPredictorLocalChoice:
       prediction = make_prediction_tournament_predictor_local(tournamentPredictor, pc);
+      if (verbose)
+      {
+        printf("Prediction using LOCAL: %d\n", prediction);
+      }
       break;
     default:
       break;
