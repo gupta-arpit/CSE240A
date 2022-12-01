@@ -81,10 +81,6 @@ struct TournamentPredictor
     uint8_t *choicePrediction;
 };
 
-// Choice constants.
-const uint8_t kTournamentPredictorGlobalChoice = 0;
-const uint8_t kTournamentPredictorLocalChoice = 1;
-
 
 void init_tournament_predictor(struct TournamentPredictor *tournamentPredictor, int ghistoryBits, int lhistoryBits, int pcIndexBits)
 {

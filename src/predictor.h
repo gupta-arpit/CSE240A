@@ -53,6 +53,10 @@ extern int pcIndexBits;  // Number of bits used for PC index
 extern int bpType;       // Branch Prediction Type
 extern int verbose;
 
+// Choice constants.
+#define kTournamentPredictorGlobalChoice 0
+#define kTournamentPredictorLocalChoice 1
+
 //------------------------------------//
 //    Predictor Function Prototypes   //
 //------------------------------------//
