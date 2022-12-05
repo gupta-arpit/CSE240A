@@ -326,7 +326,7 @@ int32_t make_prediction_custom_predictor_raw(struct CustomPredictor *customPredi
 
   for (int i = 0; i < nWeights; ++i)
   {
-    output += weights[i + 1] * ((globalHistory >> i) & 1);
+    output += weights[i + 1] * ((globalHistory >> i) & 1 ? 1 : -1);
   }
 
   return output;
@@ -351,8 +351,8 @@ void train_custom_predictor(struct CustomPredictor *customPredictor, uint32_t pc
 {
   uint32_t nPerceptrons = (1 << pcIndexBits);
   uint32_t nWeights = ghistoryBits;
-  int32_t trainingThreshold = (1 << CUSTOM_TRAINING_THRESHOLD_BITS);
-  int32_t absMaxWeights = (1 << CUSTOM_WEIGHTS_BITS) - 1;
+  int32_t trainingThreshold = 1 << CUSTOM_TRAINING_THRESHOLD_BITS;
+  int32_t absMaxWeights = 1 << (CUSTOM_WEIGHTS_BITS - 1);
 
   // Get the prediction.
   int32_t predictionRaw = make_prediction_custom_predictor_raw(customPredictor, pc);
@@ -367,8 +367,8 @@ void train_custom_predictor(struct CustomPredictor *customPredictor, uint32_t pc
     weights[0] += outcomeMultiplier;
     for (int i = 0; i < nWeights; ++i)
     {
-      weights[i + 1] += ((customPredictor->ghistory >> i) & 1) * outcomeMultiplier;
-      weights[i + 1] = max(min(weights[i + 1], absMaxWeights), -absMaxWeights);
+      weights[i + 1] += ((customPredictor->ghistory >> i) & 1 ? 1 : -1) * outcomeMultiplier;
+      weights[i + 1] = max(min(weights[i + 1], (absMaxWeights - 1)), -absMaxWeights);
     }
   }
 
