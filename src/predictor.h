@@ -41,7 +41,7 @@ extern const char *bpName[];
 // Custom predictor
 #define CUSTOM_GHISTORY_BITS 30
 #define CUSTOM_PC_INDEX_BITS 8
-#define CUSTOM_TRAINING_THRESHOLD_BITS 5
+#define CUSTOM_TRAINING_THRESHOLD_BITS 6
 #define CUSTOM_WEIGHTS_BITS 7
 
 //------------------------------------//
