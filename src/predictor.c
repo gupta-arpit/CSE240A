@@ -53,8 +53,93 @@ void print_all_the_bits_after_consecutive_zeros(uint32_t num)
   printf("\n");
 }
 
+uint32_t get_mask(int number_of_ones)
+{
+  uint32_t mask = 0;
+  for (int i = 0; i < number_of_ones; ++i)
+  {
+    mask = (mask << 1) | 1;
+  }
+  return mask;
+}
+
+
 //
 //TODO: Add your own Branch Predictor data structures here
+struct GSharePredictor
+{
+    int ghistoryBits;
+
+    // Global history variable.
+    uint32_t ghistory;
+
+    // Global predictor.
+    // Size: 2^ghistoryBits (each entry is 2 bits: 00: strongly not taken, 01: weakly not taken, 10: weakly taken, 11: strongly taken)
+    uint8_t *globalPrediction;
+
+};
+
+
+void init_gshare_predictor(struct GSharePredictor *gsharePredictor, int ghistoryBits)
+{
+  // Initialize bits in the tournament predictor.
+  gsharePredictor->ghistoryBits = ghistoryBits;
+  gsharePredictor->ghistory = 0;
+
+  // Initialize the global prediction table.
+  uint32_t globalPredictionSize = (1 << ghistoryBits); // 2^ghistoryBits
+  gsharePredictor->globalPrediction = (uint8_t *) malloc(globalPredictionSize * sizeof(uint8_t));
+  for (int i = 0; i < globalPredictionSize; i++) { gsharePredictor->globalPrediction[i] = 1; }
+  assert(gsharePredictor->globalPrediction != NULL);
+}
+
+void gc_gshare_predictor(struct GSharePredictor *gsharePredictor)
+{
+  free(gsharePredictor->globalPrediction);
+}
+
+
+uint8_t make_prediction_gshare_predictor_raw(struct GSharePredictor *gsharePredictor, uint32_t pc)
+{
+  uint32_t pcMask = get_mask(gsharePredictor->ghistoryBits);
+  uint32_t pcLastGlobalHistoryBits = pc & pcMask; // pc % 2^ghistoryBits
+  int globalHistory = gsharePredictor->ghistory & pcMask; // ghistory % 2^ghistoryBits
+  int globalPredictionIndex = globalHistory ^ pcLastGlobalHistoryBits;
+
+  // Get counter from global prediction.
+  uint8_t globalPredictionCounter = gsharePredictor->globalPrediction[globalPredictionIndex];
+
+  // Return last two bits of the counter.
+  return globalPredictionCounter & 0b11;
+}
+
+uint8_t make_prediction_gshare_predictor(struct GSharePredictor *gsharePredictor, uint32_t pc)
+{
+  uint8_t rawPrediction = make_prediction_gshare_predictor_raw(gsharePredictor, pc);
+
+  // Get the upper bit from the last 2 bits of the counter.
+  return ((rawPrediction >> 1) & 1) == 1 ? TAKEN : NOTTAKEN;
+}
+
+void train_gshare_predictor(struct GSharePredictor *gsharePredictor, uint32_t pc, uint8_t outcome) {
+
+  uint32_t pcMask = get_mask(gsharePredictor->ghistoryBits);
+  uint32_t pcLastGlobalHistoryBits = pc & pcMask; // pc % 2^ghistoryBits
+  int globalHistory = gsharePredictor->ghistory & pcMask; // ghistory % 2^ghistoryBits
+  int globalPredictionIndex = globalHistory ^ pcLastGlobalHistoryBits;
+
+  // Get counter from global prediction.
+  uint8_t *globalPredictionCounterPtr = &gsharePredictor->globalPrediction[globalPredictionIndex];
+  uint32_t* globalHistoryPtr = &gsharePredictor->ghistory;
+
+  // Update counter.
+  *globalPredictionCounterPtr = update_counter(*globalPredictionCounterPtr, outcome == TAKEN ? 1 : -1);
+  // Update global history
+  *globalHistoryPtr = ((*globalHistoryPtr << 1) | outcome) % (1 << gsharePredictor->ghistoryBits);
+
+}
+
+
 struct TournamentPredictor
 {
     int ghistoryBits;
@@ -123,15 +208,6 @@ void gc_tournament_predictor(struct TournamentPredictor *tournamentPredictor)
   free(tournamentPredictor->choicePrediction);
 }
 
-uint32_t get_mask(int number_of_ones)
-{
-  uint32_t mask = 0;
-  for (int i = 0; i < number_of_ones; ++i)
-  {
-    mask = (mask << 1) | 1;
-  }
-  return mask;
-}
 
 uint8_t make_prediction_tournament_predictor_local_raw(struct TournamentPredictor *tournamentPredictor, uint32_t pc)
 {
@@ -376,6 +452,7 @@ void train_custom_predictor(struct CustomPredictor *customPredictor, uint32_t pc
   customPredictor->ghistory = ((customPredictor->ghistory << 1) | outcome) % ((uint64_t) 1 << ghistoryBits);
 }
 
+struct GSharePredictor gsharePredictor;
 struct TournamentPredictor tournamentPredictor;
 struct CustomPredictor customPredictor;
 
@@ -392,6 +469,7 @@ init_predictor()
     case STATIC:
       break;
     case GSHARE:
+    init_gshare_predictor(&gsharePredictor, ghistoryBits);
       break;
     case TOURNAMENT:
       init_tournament_predictor(&tournamentPredictor, ghistoryBits, lhistoryBits, pcIndexBits);
@@ -420,6 +498,7 @@ make_prediction(uint32_t pc)
     case STATIC:
       return TAKEN;
     case GSHARE:
+      return make_prediction_gshare_predictor(&gsharePredictor, pc);
     case TOURNAMENT:
       return make_prediction_tournament_predictor(&tournamentPredictor, pc);
     case CUSTOM:
@@ -447,6 +526,7 @@ train_predictor(uint32_t pc, uint8_t outcome)
     case STATIC:
       break;
     case GSHARE:
+      train_gshare_predictor(&gsharePredictor, pc, outcome);
       break;
     case TOURNAMENT:
       train_tournament_predictor(&tournamentPredictor, pc, outcome);
